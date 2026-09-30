@@ -29,9 +29,9 @@ Workflow utama:
   commit-ai
 
 Source code tidak dikirim ke layanan cloud — inference berjalan di komputer kamu.`,
-	Args: cobra.NoArgs,
+	Args:    cobra.NoArgs,
 	// Workflow utama: analyze → generate → review → commit.
-	RunE: runWorkflow,
+	RunE:    runWorkflow,
 	Version: version,
 }
 
@@ -95,6 +95,26 @@ func buildProvider(cfg config.Config) (ai.Provider, error) {
 	}
 }
 
+// truncateDiff memotong diff ke max karakter. Mengembalikan diff (mungkin
+// tetap utuh) dan apakah pemotongan terjadi. Fungsi murni.
+func truncateDiff(diff string, max int) (string, bool) {
+	if len(diff) <= max {
+		return diff, false
+	}
+	return diff[:max], true
+}
+
+// finalizeMessage menormalisasi output model lalu memvalidasinya sebagai
+// commit message. Fungsi murni (FR-04 & bagian 9 PRD).
+func finalizeMessage(raw string, subjectMax int) (string, error) {
+	opts := prompt.Options{SubjectMaxLength: subjectMax}
+	message := prompt.Normalize(raw, opts)
+	if err := prompt.Validate(message, opts); err != nil {
+		return "", err
+	}
+	return message, nil
+}
+
 // runWorkflow adalah alur utama: repo check → diff → generate → review → commit.
 func runWorkflow(cmd *cobra.Command, args []string) error {
 	return runPipeline(cmd.Context(), true)
@@ -154,20 +174,20 @@ func runPipeline(ctx context.Context, doCommit bool) error {
 	p.Step(fmt.Sprintf("Reading staged changes... (%d file)", files))
 
 	// FR-02: batas ukuran diff.
-	if len(diff) > cfg.MaxDiffChars {
-		truncate, err := p.Confirm(
+	if newDiff, truncated := truncateDiff(diff, cfg.MaxDiffChars); truncated {
+		agree, cerr := p.Confirm(
 			fmt.Sprintf("Diff besar (%d karakter > batas %d). Lanjutkan dengan truncate?", len(diff), cfg.MaxDiffChars),
 			true,
 		)
-		if err != nil {
+		if cerr != nil {
 			// Lingkungan non-interaktif: default aman adalah truncate + warning.
-			truncate = true
+			agree = true
 		}
-		if !truncate {
+		if !agree {
 			p.Info("Perbesar max_diff_chars pada konfigurasi atau stage lebih sedikit file.")
 			return errors.New("diff terlalu besar")
 		}
-		diff = diff[:cfg.MaxDiffChars]
+		diff = newDiff
 		p.Warn(fmt.Sprintf("Diff dipotong ke %d karakter.", len(diff)))
 	}
 
@@ -202,15 +222,15 @@ func runPipeline(ctx context.Context, doCommit bool) error {
 			continue
 		}
 
-		message := prompt.Normalize(resp, prompt.Options{SubjectMaxLength: cfg.SubjectMaxLength})
-		if err := prompt.Validate(message, prompt.Options{SubjectMaxLength: cfg.SubjectMaxLength}); err != nil {
-			p.Warn(fmt.Sprintf("Output model tidak valid: %v", err))
+		message, verr := finalizeMessage(resp, cfg.SubjectMaxLength)
+		if verr != nil {
+			p.Warn(fmt.Sprintf("Output model tidak valid: %v", verr))
 			if attempt == 0 {
-				lastErr = err
+				lastErr = verr
 				continue // satu kali retry terkontrol (bagian 9 PRD)
 			}
 			p.Error("Gagal menghasilkan message valid. Coba regenerate manual atau edit sendiri.")
-			return err
+			return verr
 		}
 
 		p.Print("")
@@ -222,49 +242,15 @@ func runPipeline(ctx context.Context, doCommit bool) error {
 			return nil
 		}
 
-		if cfg.ConfirmBeforeCommit && flagYes {
-			// --yes hanya melewati menu; commit tetap eksplisit via flag.
-		}
-
 		action, err := selectAction(p, cfg)
 		if err != nil {
 			return err
 		}
-		switch action {
-		case actionCommit:
-			out, err := svc.Commit(message)
-			if err != nil {
-				p.Error(fmt.Sprintf("Git commit gagal: %v", err))
-				p.Info("Staged changes tetap utuh; perbaiki lalu coba lagi.")
-				return err
-			}
-			p.Step("Commit created")
-			p.Print(strings.TrimSpace(out))
-			return nil
-		case actionEdit:
-			edited, err := ui.EditInEditor(message)
-			if err != nil {
-				p.Error(err.Error())
-				return err
-			}
-			if err := prompt.Validate(edited, prompt.Options{SubjectMaxLength: cfg.SubjectMaxLength}); err != nil {
-				p.Warn("Message hasil edit tidak valid; tetap dipakai sesuai permintaan user.")
-			}
-			out, err := svc.Commit(edited)
-			if err != nil {
-				p.Error(fmt.Sprintf("Git commit gagal: %v", err))
-				return err
-			}
-			p.Step("Commit created")
-			p.Print(strings.TrimSpace(out))
-			return nil
-		case actionRegenerate:
+		if action == actionRegenerate {
 			lastErr = nil
 			continue // loop ulang generate dengan diff yang sama (FR-08)
-		default: // cancel
-			p.Info("Dibatalkan. Tidak ada commit dibuat.")
-			return nil
 		}
+		return applyAction(action, message, cfg.SubjectMaxLength, svc, p)
 	}
 	return lastErr
 }
@@ -297,4 +283,40 @@ func selectAction(p *ui.Printer, cfg config.Config) (action, error) {
 	default:
 		return actionCancel, nil
 	}
+}
+
+// applyAction mengeksekusi pilihan user setelah review (FR-06/07/09).
+// Fungsi commit/edit/cancel; regenerate ditangani loop pemanggil.
+func applyAction(a action, message string, subjectMax int, svc *git.Service, p *ui.Printer) error {
+	switch a {
+	case actionEdit:
+		edited, err := ui.EditInEditor(message)
+		if err != nil {
+			p.Error(err.Error())
+			return err
+		}
+		if err := prompt.Validate(edited, prompt.Options{SubjectMaxLength: subjectMax}); err != nil {
+			p.Warn("Message hasil edit tidak valid; tetap dipakai sesuai permintaan user.")
+		}
+		return commitAndReport(svc, edited, p)
+	case actionCommit:
+		return commitAndReport(svc, message, p)
+	default: // actionCancel
+		p.Info("Dibatalkan. Tidak ada commit dibuat.")
+		return nil
+	}
+}
+
+// commitAndReport menjalankan git commit dan melaporkan hasilnya (FR-09).
+// Exit code mengikuti error return; staged changes tetap utuh saat gagal.
+func commitAndReport(svc *git.Service, message string, p *ui.Printer) error {
+	out, err := svc.Commit(message)
+	if err != nil {
+		p.Error(fmt.Sprintf("Git commit gagal: %v", err))
+		p.Info("Staged changes tetap utuh; perbaiki lalu coba lagi.")
+		return err
+	}
+	p.Step("Commit created")
+	p.Print(strings.TrimSpace(out))
+	return nil
 }
