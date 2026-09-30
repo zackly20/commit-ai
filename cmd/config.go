@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -158,9 +159,9 @@ func setConfigValue(cfg *config.Config, key, value string) error {
 }
 
 func setInt(dst *int, key, value string) error {
-	var n int
-	if _, err := fmt.Sscanf(value, "%d", &n); err != nil {
-		return fmt.Errorf("nilai %s harus angka: %q", key, value)
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("nilai %s harus angka bulat: %q", key, value)
 	}
 	*dst = n
 	return nil
