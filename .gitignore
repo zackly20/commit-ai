@@ -1,0 +1,12 @@
+# Binaries
+*.exe
+commit-ai
+dist/
+
+# Test
+*.test
+coverage.out
+
+# Editor
+.vscode/
+.idea/
