@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Pertanyaan & Diskusi
+    url: https://github.com/zackly20/commit-ai/discussions
+    about: Tanya cara pakai, konfigurasi model, atau diskusi ide sebelum membuat Issue
+  - name: Laporan Keamanan
+    url: https://github.com/zackly20
+    about: Jangan lapor kerentanan lewat Issue publik — hubungi pemilik repo secara langsung

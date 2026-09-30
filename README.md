@@ -133,6 +133,10 @@ sehingga CI tidak membutuhkan Ollama sama sekali.
 - **Phase 4** — shared team config & conventions
 - **Phase 5** — cloud provider sebagai opsi eksplisit (opt-in)
 
+## Contributing
+
+Kontribusi sangat diterima! Lihat [CONTRIBUTING.md](CONTRIBUTING.md) untuk panduan setup development, konvensi kode, dan alur Pull Request.
+
 ## License
 
 MIT — lihat [LICENSE](LICENSE).
