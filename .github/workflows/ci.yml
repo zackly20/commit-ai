@@ -37,6 +37,8 @@ jobs:
       contents: write # untuk push branch coverage-badge
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # riwayat penuh dibutuhkan untuk push branch badge
 
       - uses: actions/setup-go@v5
         with:
@@ -65,7 +67,6 @@ jobs:
       # tidak muncul di contributors). Badge dibaca shields.io endpoint.
       - name: Publish coverage badge
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        continue-on-error: true # gagal publish badge tidak merahkan CI
         env:
           PCT: ${{ steps.cov.outputs.percent }}
           COLOR: ${{ steps.cov.outputs.color }}
@@ -77,12 +78,11 @@ jobs:
           git config user.name "zackly20"
           git config user.email "136797098+zackly20@users.noreply.github.com"
 
+          # Refspec eksplisit agar refs/remotes/origin/coverage-badge pasti ada.
           if git ls-remote --exit-code origin refs/heads/coverage-badge >/dev/null 2>&1; then
-            # Branch sudah ada: ambil, perbarui file, commit, push.
-            git fetch --depth=1 origin coverage-badge
+            git fetch origin +refs/heads/coverage-badge:refs/remotes/origin/coverage-badge
             git checkout -B coverage-badge origin/coverage-badge
           else
-            # Pertama kali: branch kosong berisi coverage.json saja.
             git checkout --orphan coverage-badge
             git rm -rf --cached . >/dev/null 2>&1 || true
           fi
