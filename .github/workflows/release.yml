@@ -25,13 +25,17 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          set -eu
-          mkdir -p dist
+          set -euo pipefail
+          shopt -s nullglob
+
+          # Binary mentah di dist/bin, arsip di dist/ — dipisah agar
+          # pembersihan bin tidak menghapus arsip.
+          mkdir -p dist/bin
           LDFLAGS="-s -w -X github.com/zackly20/commit-ai/cmd.version=${VERSION}"
 
           build() {
             local os=$1 arch=$2 ext=${3:-}
-            local out="dist/commit-ai-${os}-${arch}${ext}"
+            local out="dist/bin/commit-ai-${os}-${arch}${ext}"
             echo "== building ${out}"
             GOOS="${os}" GOARCH="${arch}" go build -trimpath -ldflags "${LDFLAGS}" -o "${out}" .
           }
@@ -47,17 +51,19 @@ jobs:
           build linux arm64
 
           # Arsip per-platform: .zip untuk Windows, .tar.gz lainnya
-          cd dist
-          for f in commit-ai-windows-*; do
-            zip -q "${f%.exe}.zip" "$f"
+          cd dist/bin
+          for f in commit-ai-windows-*.exe; do
+            zip -q "../${f%.exe}.zip" "$f"
           done
           for f in commit-ai-darwin-* commit-ai-linux-*; do
-            tar czf "${f}.tar.gz" "$f"
+            tar czf "../${f}.tar.gz" "$f"
           done
-          rm -f commit-ai-*
+          cd ../..
 
-          # Checksums untuk verifikasi unduhan
-          sha256sum * > checksums.txt
+          # Checksums untuk verifikasi unduhan (tanpa menyertakan dirinya)
+          cd dist
+          sha256sum *.zip *.tar.gz > checksums.txt
+          ls -l
           cd ..
 
       - name: Test (sebelum rilis)
