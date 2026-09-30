@@ -47,7 +47,19 @@ Binary hasil build bisa dipindahkan ke folder PATH kamu.
 
 ### Release binary
 
-Binary cross-platform (Windows, macOS, Linux) tersedia di halaman [Releases](https://github.com/zackly20/commit-ai/releases).
+Binary cross-platform tersedia di halaman [Releases](https://github.com/zackly20/commit-ai/releases) — build otomatis oleh CI saat tag `v*` di-push.
+
+| OS | File |
+|---|---|
+| Windows (amd64/arm64) | `commit-ai-windows-amd64.zip` / `commit-ai-windows-arm64.zip` |
+| macOS (Intel/Apple Silicon) | `commit-ai-darwin-amd64.tar.gz` / `commit-ai-darwin-arm64.tar.gz` |
+| Linux (amd64/arm64) | `commit-ai-linux-amd64.tar.gz` / `commit-ai-linux-arm64.tar.gz` |
+
+Verifikasi integritas unduhan dengan `checksums.txt` (SHA-256) yang disertakan di setiap rilis:
+
+```bash
+sha256sum -c checksums.txt --ignore-missing
+```
 
 ## Usage
 
