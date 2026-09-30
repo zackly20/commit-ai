@@ -40,11 +40,17 @@ func TestLoadReadsGlobalLayer(t *testing.T) {
 	tmp := t.TempDir()
 	withFakeConfigHome(t, tmp)
 
-	dir := filepath.Join(tmp, "cfg", "commit-ai")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// Tulis global config ke path yang memang dikembalikan GlobalPath()
+	// agar test tidak bergantung pada perbedaan UserConfigDir antar-OS
+	// (Windows: %AppData%, macOS: ~/Library/Application Support, Unix: XDG).
+	gp, err := GlobalPath()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("model: global-model\n"), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Dir(gp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gp, []byte("model: global-model\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// Pindah ke direktori tanpa .commit-ai.yaml.
