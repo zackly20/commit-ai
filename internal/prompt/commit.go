@@ -39,6 +39,33 @@ Requirements:
 - Return only the commit message.`
 }
 
+// ExplainSystemPrompt mengarahkan model menjelaskan perubahan dalam diff,
+// bukan menulis ulang kode atau membuat commit message.
+func ExplainSystemPrompt() string {
+	return `You are an expert software developer reviewing Git changes.
+Explain what the provided Git diff changes and why it matters.
+
+Requirements:
+- Summarize the primary change first.
+- Mention the key files or components involved.
+- Note anything risky or incomplete if visible.
+- Do not invent changes not present in the diff.
+- Do not include markdown fences.
+- Keep it under 150 words.`
+}
+
+// BuildExplainUserPrompt membangun user prompt untuk explain:
+// instruksi bahasa (opsional) + diff yang akan dijelaskan.
+func BuildExplainUserPrompt(diff string, opts Options) string {
+	var b strings.Builder
+	if opts.Language != "" && opts.Language != "en" {
+		fmt.Fprintf(&b, "Respond in language code %q.\n", opts.Language)
+	}
+	b.WriteString("\nGit diff:\n")
+	b.WriteString(diff)
+	return b.String()
+}
+
 // BuildUserPrompt membangun user prompt berisi instruksi bahasa + diff.
 func BuildUserPrompt(diff string, opts Options) string {
 	var b strings.Builder
@@ -125,6 +152,33 @@ func isValidFormat(s string) bool {
 		}
 	}
 	return false
+}
+
+// NormalizeExplanation membersihkan output model untuk explain:
+// buang code fence dan baris kosong berlebih. Penjelasan boleh multi-baris,
+// jadi tidak dipangkas jadi satu baris seperti commit message.
+func NormalizeExplanation(raw string) string {
+	s := strings.TrimSpace(stripFences(raw))
+	lines := strings.Split(s, "\n")
+	var out []string
+	blank := true
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			if blank {
+				continue // buang baris kosong di awal & beruntun
+			}
+			out = append(out, "")
+			blank = true
+			continue
+		}
+		out = append(out, strings.TrimRight(l, " \t"))
+		blank = false
+	}
+	// Buang trailing blank lines.
+	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
+	return strings.Join(out, "\n")
 }
 
 // Validate memvalidasi message final sebelum dipakai commit (bagian 9 PRD).

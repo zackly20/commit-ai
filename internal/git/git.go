@@ -79,6 +79,16 @@ func (s *Service) StagedDiff() (string, error) {
 	return out, nil
 }
 
+// Diff mengembalikan working tree diff (perubahan yang belum di-stage).
+// Dipakai `commit-ai explain --unstaged`.
+func (s *Service) Diff() (string, error) {
+	out, err := s.runner.Run(s.dir, "diff")
+	if err != nil {
+		return "", fmt.Errorf("read working diff: %w", err)
+	}
+	return out, nil
+}
+
 // StagedFileCount mengembalikan jumlah file yang di-stage.
 func (s *Service) StagedFileCount() (int, error) {
 	out, err := s.runner.Run(s.dir, "diff", "--cached", "--name-only")

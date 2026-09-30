@@ -68,6 +68,8 @@ sha256sum -c checksums.txt --ignore-missing
 |---|---|
 | `commit-ai` | Workflow utama: analyze → generate → review → commit |
 | `commit-ai generate` | Generate message saja, tanpa commit |
+| `commit-ai explain` | Jelaskan isi staged diff dengan bahasa alami |
+| `commit-ai explain --unstaged` | Jelaskan perubahan yang belum di-stage |
 | `commit-ai init` | Buat `.commit-ai.yaml` di repository |
 | `commit-ai config show` | Tampilkan konfigurasi efektif |
 | `commit-ai config get <key>` | Tampilkan satu nilai |
@@ -76,6 +78,19 @@ sha256sum -c checksums.txt --ignore-missing
 | `commit-ai --version` | Versi |
 
 Flag opsional: `--endpoint`, `--model`, `--lang`, `--yes`.
+
+## Explain (Phase 2)
+
+Mau tahu apa arti sebuah perubahan? `explain` menganalisis diff dengan Local AI dan merangkumnya dalam bahasa alami — tanpa mengubah apa pun:
+
+```bash
+git add .
+commit-ai explain          # jelaskan perubahan yang sudah di-stage
+
+commit-ai explain --unstaged   # jelaskan perubahan yang belum di-stage
+```
+
+Output mengikuti `language` di konfigurasi (mis. `language: id` → penjelasan bahasa Indonesia).
 
 ## Configuration
 
