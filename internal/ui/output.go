@@ -1,6 +1,6 @@
 // Package ui menyediakan helper output terminal dan prompt interaktif.
 // Output tidak bergantung hanya pada warna — simbol teks selalu disertakan
-// (NFR Accessibility).
+// (NFR Accessibility). Out dan In dapat di-inject untuk keperluan test.
 package ui
 
 import (
@@ -11,13 +11,29 @@ import (
 	"strings"
 )
 
-// Printer menulis output berlangkah ke sebuah writer.
+// Printer menulis output berlangkah ke sebuah writer dan membaca
+// input dari In (default: stdin).
 type Printer struct {
 	Out io.Writer
+	In  io.Reader
+
+	br *bufio.Reader // reader persisten agar antar-prompt tidak kehilangan buffer
 }
 
-// NewPrinter membuat Printer ke stdout.
-func NewPrinter() *Printer { return &Printer{Out: os.Stdout} }
+// NewPrinter membuat Printer ke stdout/stdin.
+func NewPrinter() *Printer { return &Printer{Out: os.Stdout, In: os.Stdin} }
+
+// reader mengembalikan bufio.Reader persisten atas input yang di-inject.
+func (p *Printer) reader() *bufio.Reader {
+	if p.br == nil {
+		in := p.In
+		if in == nil {
+			in = os.Stdin
+		}
+		p.br = bufio.NewReader(in)
+	}
+	return p.br
+}
 
 func (p *Printer) printf(format string, a ...any) {
 	fmt.Fprintf(p.Out, format, a...)
@@ -48,9 +64,9 @@ func (p *Printer) Select(question string, options []string) (int, error) {
 	}
 	p.printf("Pilih 1-%d: ", len(options))
 
-	reader := bufio.NewReader(os.Stdin)
+	in := p.reader()
 	for {
-		line, err := reader.ReadString('\n')
+		line, err := in.ReadString('\n')
 		if err != nil && line == "" {
 			return -1, fmt.Errorf("input dibatalkan")
 		}
@@ -70,8 +86,9 @@ func (p *Printer) Confirm(question string, defaultValue bool) (bool, error) {
 		suffix = "[Y/n]"
 	}
 	p.printf("%s %s: ", question, suffix)
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
+
+	in := p.reader()
+	line, err := in.ReadString('\n')
 	if err != nil && line == "" {
 		return false, err
 	}
@@ -82,10 +99,20 @@ func (p *Printer) Confirm(question string, defaultValue bool) (bool, error) {
 	return line == "y" || line == "yes", nil
 }
 
-// EditInEditor membuka editor untuk mengubah message dan mengembalikan hasil.
-// Editor diambil dari env COMMITAI_EDITOR, GIT_EDITOR, VISUAL, EDITOR,
-// lalu fallback notepad (Windows) / vi (lainnya) — sesuai FR-07.
-func EditInEditor(message string) (string, error) {
+// RunEditor menjalankan editor; variabel package agar dapat diganti
+// pada unit test (mock editor).
+var RunEditor = func(editor, path string) error {
+	// Untuk notepad, buka lalu tunggu sampai ditutup.
+	if isWindows() && strings.EqualFold(editor, "notepad") {
+		return waitCommand("cmd", "/c", "notepad", path)
+	}
+	parts := strings.Fields(editor)
+	return waitCommand(parts[0], append(parts[1:], path)...)
+}
+
+// pickEditor menentukan editor dari env COMMITAI_EDITOR, GIT_EDITOR,
+// VISUAL, EDITOR, lalu fallback notepad (Windows) / vi (lainnya) — FR-07.
+func pickEditor() string {
 	editor := firstNonEmpty(
 		os.Getenv("COMMITAI_EDITOR"),
 		os.Getenv("GIT_EDITOR"),
@@ -99,6 +126,12 @@ func EditInEditor(message string) (string, error) {
 			editor = "vi"
 		}
 	}
+	return editor
+}
+
+// EditInEditor membuka editor untuk mengubah message dan mengembalikan hasil.
+func EditInEditor(message string) (string, error) {
+	editor := pickEditor()
 
 	tmp, err := os.CreateTemp("", "commit-ai-*.txt")
 	if err != nil {
@@ -113,7 +146,7 @@ func EditInEditor(message string) (string, error) {
 	}
 	tmp.Close()
 
-	if err := runEditor(editor, tmpPath); err != nil {
+	if err := RunEditor(editor, tmpPath); err != nil {
 		return "", fmt.Errorf("buka editor %q: %w", editor, err)
 	}
 
@@ -130,16 +163,6 @@ func EditInEditor(message string) (string, error) {
 		kept = append(kept, l)
 	}
 	return strings.TrimSpace(strings.Join(kept, "\n")), nil
-}
-
-// runEditor menjalankan editor; notepad-butuh-wait ditangani via wrapper.
-func runEditor(editor, path string) error {
-	// Untuk notepad, buka lalu tunggu sampai ditutup.
-	if isWindows() && strings.EqualFold(editor, "notepad") {
-		return waitCommand("cmd", "/c", "notepad", path)
-	}
-	parts := strings.Fields(editor)
-	return waitCommand(parts[0], append(parts[1:], path)...)
 }
 
 func firstNonEmpty(vals ...string) string {
