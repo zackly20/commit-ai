@@ -1,6 +1,7 @@
 # CommitAI
 
-[![Build Status](https://github.com/zackly20/commit-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/zackly20/commit-ai/actions/workflows/ci.yml)
+[![Build Status](https://github.com/zackly20/commit-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zackly20/commit-ai/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zackly20/commit-ai/coverage-badge/coverage.json)](https://github.com/zackly20/commit-ai/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zackly20/commit-ai)](https://github.com/zackly20/commit-ai/releases)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

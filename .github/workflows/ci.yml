@@ -27,3 +27,56 @@ jobs:
 
       - name: Build
         run: go build -o commit-ai-test .
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test with coverage
+        run: go test ./... -covermode=atomic -coverprofile=coverage.out
+
+      - name: Coverage summary
+        id: cov
+        run: |
+          pct=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%",""); print $3}')
+          echo "percent=$pct" >> "$GITHUB_OUTPUT"
+          color=$(awk -v p="$pct" 'BEGIN{print (p>=80?"brightgreen":p>=60?"green":p>=40?"yellow":"red")}')
+          echo "color=$color" >> "$GITHUB_OUTPUT"
+          echo "Total coverage: ${pct}%"
+          go tool cover -func=coverage.out | tail -5
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+
+      # Publish badge ke branch coverage-badge (bukan default branch, agar
+      # tidak muncul di contributors). Badge dibaca shields.io endpoint.
+      - name: Publish coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          PCT: ${{ steps.cov.outputs.percent }}
+          COLOR: ${{ steps.cov.outputs.color }}
+        run: |
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' "$PCT" "$COLOR" > coverage.json
+
+          git config user.name "zackly20"
+          git config user.email "136797098+zackly20@users.noreply.github.com"
+
+          git fetch origin coverage-badge 2>/dev/null || true
+          if git checkout -b coverage-badge origin/coverage-badge 2>/dev/null; then
+            : # branch sudah ada; lanjut update file
+          else
+            git checkout --orphan coverage-badge
+            git rm -rf --cached . >/dev/null 2>&1 || true
+          fi
+
+          git add coverage.json
+          git commit -m "chore: update coverage badge [skip ci]" || echo "badge tidak berubah"
+          git push origin coverage-badge
